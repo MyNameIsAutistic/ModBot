@@ -1,50 +1,62 @@
-var express = require("express");
-var app = express();
-const discord = require("discord.js");
+const Discord = require("discord.js");
 var config = require("./config.json");
-const bot = new discord.Client();
+var bot = new Discord.Client();
 const token = process.env.TOKEN;
 const fs = require('fs');
-var commandlist = [];
-const keepAlive = require('./server');
+const Enmap = require('enmap');
+const express = require('express');
+const app = express();
+const port = 3000;
 
-app.get('/', (request, response) => {
-     response.sendStatus(200);
-});
+app.get('/', (req, res) => res.send('Stolen Code.com'));
 
-fs.readdir("./commands", async(error, test) =>{
-  if(error){
-    return console.log("Error Reading Files");
-  }
-  test.forEach(async(file) => {
-    if(!file.endsWith(".js")) return;
-   let filename = `./commands/${file}`;
-    var commandFile = await require('filename');
-    commandlist.push({
-      file: commandFile,
-      name: file.split(".")[0]
+app.listen(port, () => console.log(`Bot is listening at http://localhost:${port}`));
+
+
+require("./util/eventHandler")(bot)
+
+bot.commands = new Discord.Collection();
+bot.aliases = new Discord.Collection();
+
+fs.readdir("./commands/", (err, files) => {
+
+    if(err) console.log(err)
+
+    let jsfile = files.filter(f => f.split(".").pop() === "js")
+    if(jsfile.length <= 0) {
+        return console.log("[LOGS] Cannot find commands!")
+    }
+
+    jsfile.forEach((f, i) => {
+        let pull = require(`./commands/${f}`);
+        bot.commands.set(pull.config.name, pull);
+        pull.config.aliases.forEach(alias => {
+            bot.aliases.set(alias, pull.config.name)
+        });
     });
-  });
 });
 
-bot.on("ready", async() => {
-console.log("Ready!")
-bot.user.setActivity("yo you should say %help to check out my commands 😉", { "type": "STREAMING" })
+bot.on("message", async message => {
+    if(message.author.bot || message.channel.type == "dm") return;
+
+    let prefix = config.prefix;
+    let messageArray = message.content.split(" ");
+    let cmd = messageArray[0];
+    let args = messageArray.slice(1);
+
+    if(!message.content.startsWith(prefix)) return;
+    let commandfile = bot.commands.get(cmd.slice(prefix.length)) || bot.commands.get(bot.aliases.get(cmd.slice(prefix.length)))
+    if(commandfile) commandfile.run(bot,message,args)
+})
+
+bot.on("guildCreate", guild => {
+  guild.owner.send({
+    embed: {
+      color: 'RANDOM',
+      title: 'Thanks.',
+      description: 'The creators of ModBot Premium thank you for adding ModBot Premium to your server and helping the bot grow!'
+    }
+  })
 });
 
-bot.on("message", async (message) => {
-  console.log("A message was sent");
- if(message.author.bot || !message.content.startsWith(config.prefix)) return;
- console.log(`A message with the prefix was sent: ${message.content}`)
-const args = await message.content.slice(config.prefix.length).toLowerCase().split(/\s+/);
- const commandName = await args[0].toLowerCase();
- args.shift();
- const command = commandlist.findIndex((cmd) => cmd.name === commandName);
- if(command ==-1) return;
- commandlist[command].file.run(client, message, args);
-});
-
-
-
-keepAlive();
 bot.login(token);
